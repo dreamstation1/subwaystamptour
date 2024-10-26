@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title> 한국철도 스탬프 투어</title>
+    <title>한국 지하철 스탬프 투어</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -28,7 +28,7 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
 </head>
 <body>
-    <h1>한국철도 스탬프 투어</h1>
+    <h1>한국 지하철 스탬프 투어</h1>
     <div id="controls">
         <label for="regions">지역 선택:</label>
         <select id="regions" onchange="selectRegion()">
@@ -62,18 +62,23 @@
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             maxZoom: 19,
         }).addTo(map);
+
         let stations = [];
-        let buildingLayer = L.layerGroup().addTo(map);
         let certifiedStations = [];
+        let buildingLayer = L.layerGroup().addTo(map);
+        let userMarker = null;
+
         function selectRegion() {
             const selectedRegion = document.getElementById("regions").value;
             if (!selectedRegion) return;
+
             let overpassQuery = '';
-            if (selectedRegion === "서울") {
-                overpassQuery = '[out:json][timeout:25];area[name="서울특별시"]->.searchArea1;area[name="인천광역시"]->.searchArea2;(node["railway"="station"](area.searchArea1);node["public_transport"="station"](area.searchArea1);node["railway"="station"](area.searchArea2);node["public_transport"="station"](area.searchArea2););out body;';
+            if (selectedRegion === "서울" || selectedRegion === "경기") {
+                overpassQuery = '[out:json][timeout:25];area[name="서울특별시"]->.searchArea1;area[name="경기도"]->.searchArea2;(node["railway"="station"](area.searchArea1);node["public_transport"="station"](area.searchArea1);node["railway"="station"](area.searchArea2);node["public_transport"="station"](area.searchArea2););out body;';
             } else {
                 overpassQuery = `[out:json][timeout:25];area[name="${selectedRegion}"]->.searchArea;(node["railway"="station"](area.searchArea);node["public_transport"="station"](area.searchArea););out body;`;
             }
+
             fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(overpassQuery)}`)
             .then(response => response.json())
             .then(data => {
@@ -82,19 +87,26 @@
                     lat: station.lat,
                     lon: station.lon
                 }));
+
+                findNearestStations();
                 updateStationDropdown();
                 addMarkersToMap();
-                findNearestStation();
             });
         }
+
+        function findNearestStations() {
+            if (!userLat || !userLon || stations.length === 0) return;
+
+            stations.sort((a, b) => getDistance(userLat, userLon, a.lat, a.lon) - getDistance(userLat, userLon, b.lat, b.lon));
+            stations = stations.slice(0, 20);
+
+            updateStationDropdown();
+        }
+
         function updateStationDropdown() {
             const stationSelect = document.getElementById("stations");
             stationSelect.innerHTML = '<option value="">역을 선택하세요</option>';
-            stations.sort((a, b) => {
-                const distanceA = getDistance(userLat, userLon, a.lat, a.lon);
-                const distanceB = getDistance(userLat, userLon, b.lat, b.lon);
-                return distanceA - distanceB;
-            });
+
             stations.forEach(station => {
                 const option = document.createElement("option");
                 option.value = `${station.lat},${station.lon}`;
@@ -102,36 +114,31 @@
                 stationSelect.appendChild(option);
             });
         }
+
         function addMarkersToMap() {
+            buildingLayer.clearLayers();
             stations.forEach(station => {
-                L.marker([station.lat, station.lon]).addTo(map)
+                L.marker([station.lat, station.lon]).addTo(buildingLayer)
                     .bindPopup(station.name);
             });
         }
+
         let userLat, userLon;
-        navigator.geolocation.getCurrentPosition(position => {
+        navigator.geolocation.watchPosition(position => {
             userLat = position.coords.latitude;
             userLon = position.coords.longitude;
-            document.getElementById('current-location').innerText = `현재 위치: ${userLat.toFixed(6)}, ${userLon.toFixed(6)}`;
-            findNearestStation();
-        });
-        function findNearestStation() {
-            if (!userLat || !userLon || stations.length === 0) return;
-            let nearestStation = null;
-            let minDistance = Infinity;
-            stations.forEach(station => {
-                const distance = getDistance(userLat, userLon, station.lat, station.lon);
-                if (distance < minDistance) {
-                    minDistance = distance;
-                    nearestStation = station;
-                }
-            });
-            if (nearestStation) {
-                document.getElementById('nearest-station').innerText = `가장 가까운 역: ${nearestStation.name} (${minDistance.toFixed(2)} m)`;
-                fetchNearbyBuildings(nearestStation.lat, nearestStation.lon);
+
+            if (userMarker) {
+                userMarker.setLatLng([userLat, userLon]);
+            } else {
+                userMarker = L.marker([userLat, userLon], { color: 'red' }).addTo(map).bindPopup('현재 위치');
             }
-            updateStationDropdown();
-        }
+
+            document.getElementById('current-location').innerText = `현재 위치: ${userLat.toFixed(6)}, ${userLon.toFixed(6)}`;
+
+            findNearestStations();
+        });
+
         function getDistance(lat1, lon1, lat2, lon2) {
             const R = 6371;
             const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -142,15 +149,18 @@
             const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
             return R * c * 1000;
         }
+
         function checkDistance() {
             const selectedStation = document.getElementById('stations').value.split(',');
             const stationLat = parseFloat(selectedStation[0]);
             const stationLon = parseFloat(selectedStation[1]);
             const distance = getDistance(userLat, userLon, stationLat, stationLon);
+
             const result = document.getElementById("result");
             if (distance < 100) {
                 result.textContent = `성공! 선택된 역과의 거리: ${distance.toFixed(2)} m`;
                 result.className = 'success-message';
+
                 const stationName = stations.find(st => st.lat === stationLat && st.lon === stationLon).name;
                 if (!certifiedStations.includes(stationName)) {
                     certifiedStations.push(stationName);
@@ -161,32 +171,12 @@
                 result.className = '';
             }
         }
+
         function updateCertifiedList(stationName) {
             const list = document.getElementById('certified-list');
             const listItem = document.createElement('li');
             listItem.textContent = `${stationName} (인증됨)`;
             list.appendChild(listItem);
-        }
-        function fetchNearbyBuildings(lat, lon) {
-            buildingLayer.clearLayers();
-            const query = `
-                [out:json][timeout:25];
-                (
-                    way["building"](around:300, ${lat}, ${lon});
-                    node(w);
-                );
-                out body;
-            `;
-            fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`)
-            .then(response => response.json())
-            .then(data => {
-                data.elements.forEach(element => {
-                    if (element.lat && element.lon) {
-                        L.marker([element.lat, element.lon]).addTo(buildingLayer)
-                            .bindPopup(element.tags.name || "이름 없음");
-                    }
-                });
-            });
         }
     </script>
 </body>
