@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>한국 버스 정류장 스탬프 투어</title>
+    <title>한국 지하철 스탬프 투어</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -28,12 +28,12 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
 </head>
 <body>
-    <h1>한국 버스 정류장 스탬프 투어</h1>
+    <h1>한국 지하철 스탬프 투어</h1>
     <div id="controls">
         <label for="regions">지역 선택:</label>
         <select id="regions" onchange="selectRegion()">
             <option value="">지역을 선택하세요</option>
-            <option value="서울특별시">서울</option>
+            <option value="서울">서울</option>
             <option value="부산광역시">부산</option>
             <option value="대구광역시">대구</option>
             <option value="광주광역시">광주</option>
@@ -42,21 +42,20 @@
             <option value="경기도">경기</option>
         </select>
         <br>
-        <label for="stations">가까운 정류장 목록:</label>
+        <label for="stations">가까운 역 목록:</label>
         <select id="stations">
-            <option value="">정류장을 선택하세요</option>
+            <option value="">역을 선택하세요</option>
         </select>
     </div>
     <div id="map"></div>
     <p id="current-location">현재 위치: 로딩 중...</p>
-    <p id="nearest-station" class="info-message">가장 가까운 정류장: 로딩 중...</p>
+    <p id="nearest-station" class="info-message">가장 가까운 역: 로딩 중...</p>
     <button onclick="checkDistance()">인증하기</button>
     <p id="result"></p>
     <div class="certified-list">
-        <h3>인증된 정류장 목록</h3>
+        <h3>인증된 역 목록</h3>
         <ul id="certified-list"></ul>
     </div>
-
     <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
     <script>
         const map = L.map('map').setView([37.5665, 126.9780], 12);
@@ -69,16 +68,15 @@
         let buildingLayer = L.layerGroup().addTo(map);
         let userMarker = null;
 
-        // 지역 선택 시 호출
         function selectRegion() {
             const selectedRegion = document.getElementById("regions").value;
             if (!selectedRegion) return;
 
             let overpassQuery = '';
-            if (selectedRegion === "서울특별시" || selectedRegion === "경기도") {
-                overpassQuery = '[out:json][timeout:25];area[name="서울특별시"]->.searchArea1;area[name="경기도"]->.searchArea2;(node["highway"="bus_stop"](area.searchArea1);node["highway"="bus_stop"](area.searchArea2););out body;';
+            if (selectedRegion === "서울" || selectedRegion === "경기") {
+                overpassQuery = '[out:json][timeout:25];area[name="서울특별시"]->.searchArea1;area[name="경기도"]->.searchArea2;(node["railway"="station"](area.searchArea1);node["public_transport"="station"](area.searchArea1);node["railway"="station"](area.searchArea2);node["public_transport"="station"](area.searchArea2););out body;';
             } else {
-                overpassQuery = `[out:json][timeout:25];area[name="${selectedRegion}"]->.searchArea;(node["highway"="bus_stop"](area.searchArea););out body;`;
+                overpassQuery = `[out:json][timeout:25];area[name="${selectedRegion}"]->.searchArea;(node["railway"="station"](area.searchArea);node["public_transport"="station"](area.searchArea););out body;`;
             }
 
             fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(overpassQuery)}`)
@@ -96,21 +94,18 @@
             });
         }
 
-        // 가장 가까운 정류장 찾기
         function findNearestStations() {
             if (!userLat || !userLon || stations.length === 0) return;
 
-            // 거리 기준으로 정렬하여 가까운 20개 정류장 선택
             stations.sort((a, b) => getDistance(userLat, userLon, a.lat, a.lon) - getDistance(userLat, userLon, b.lat, b.lon));
-            stations = stations.slice(0, 20); // 가까운 20개 정류장만 유지
+            stations = stations.slice(0, 20);
 
             updateStationDropdown();
         }
 
-        // 정류장 선택 드롭다운 업데이트
         function updateStationDropdown() {
             const stationSelect = document.getElementById("stations");
-            stationSelect.innerHTML = '<option value="">정류장을 선택하세요</option>';
+            stationSelect.innerHTML = '<option value="">역을 선택하세요</option>';
 
             stations.forEach(station => {
                 const option = document.createElement("option");
@@ -120,7 +115,6 @@
             });
         }
 
-        // 지도에 정류장 마커 추가
         function addMarkersToMap() {
             buildingLayer.clearLayers();
             stations.forEach(station => {
@@ -129,7 +123,6 @@
             });
         }
 
-        // 실시간 위치 업데이트 및 마커 표시
         let userLat, userLon;
         navigator.geolocation.watchPosition(position => {
             userLat = position.coords.latitude;
@@ -146,7 +139,6 @@
             findNearestStations();
         });
 
-        // 두 지점 간 거리 계산 함수
         function getDistance(lat1, lon1, lat2, lon2) {
             const R = 6371;
             const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -158,7 +150,6 @@
             return R * c * 1000;
         }
 
-        // 인증 버튼 클릭 시 거리 체크 및 인증
         function checkDistance() {
             const selectedStation = document.getElementById('stations').value.split(',');
             const stationLat = parseFloat(selectedStation[0]);
@@ -166,8 +157,8 @@
             const distance = getDistance(userLat, userLon, stationLat, stationLon);
 
             const result = document.getElementById("result");
-            if (distance < 10) {
-                result.textContent = `성공! 선택된 정류장과의 거리: ${distance.toFixed(2)} m`;
+            if (distance < 100) {
+                result.textContent = `성공! 선택된 역과의 거리: ${distance.toFixed(2)} m`;
                 result.className = 'success-message';
 
                 const stationName = stations.find(st => st.lat === stationLat && st.lon === stationLon).name;
@@ -176,12 +167,11 @@
                     updateCertifiedList(stationName);
                 }
             } else {
-                result.textContent = `실패. 선택된 정류장과의 거리: ${distance.toFixed(2)} m`;
+                result.textContent = `실패. 선택된 역과의 거리: ${distance.toFixed(2)} m`;
                 result.className = '';
             }
         }
 
-        // 인증된 정류장 목록 업데이트
         function updateCertifiedList(stationName) {
             const list = document.getElementById('certified-list');
             const listItem = document.createElement('li');
